@@ -38,6 +38,8 @@ Here's a sample "posts list".
   {% endfor %}
 </ul>
 
+<div id="clustrmaps-widget"></div><script type="text/javascript">var _clustrmaps = {'url' : 'http://jetan9.github.io', 'user' : 1159877, 'server' : '4', 'id' : 'clustrmaps-widget', 'version' : 1, 'date' : '2015-02-24', 'lang' : 'zh', 'corners' : 'square' };(function (){ var s = document.createElement('script'); s.type = 'text/javascript'; s.async = true; s.src = 'http://www4.clustrmaps.com/counter/map.js'; var x = document.getElementsByTagName('script')[0]; x.parentNode.insertBefore(s, x);})();</script><noscript><a href="http://www4.clustrmaps.com/user/00c11b2c5"><img src="http://www4.clustrmaps.com/stats/maps-no_clusters/jetan9.github.io-thumb.jpg" alt="Locations of visitors to this page" /></a></noscript>
+
 ## To-Do
 
 This theme is still unfinished. If you'd like to be added as a contributor, [please fork](http://github.com/plusjade/jekyll-bootstrap)!
