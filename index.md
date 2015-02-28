@@ -1,7 +1,7 @@
 ---
 layout: page
-title: 安宁宇的网络日志
-tagline: 
+title: 首页
+tagline: ""
 ---
 {% include JB/setup %}
 
