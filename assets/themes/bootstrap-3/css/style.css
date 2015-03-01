@@ -14,8 +14,21 @@
   float: right; }*/
 
 /* Jekyll Bootstrap Colors */
-h1, h2, h3, h4 {
-  color: #f22430;
+h1 {
+  color: #54b78a;
+  font-size: 2.2em;
+}
+h2 {
+  color: #b85a22;
+  font-size: 1.9em;
+}
+h3 {
+  color: #716767;
+  font-size: 1.6em;
+}
+h4 {
+  color: #568278;
+  font-size: 1.3em;
 }
 #footer {
   background-color: #ededed;
@@ -39,8 +52,9 @@ h1, h2, h3, h4 {
 
 /* post-full*/
 .post-full .date {
+  color: #aaaaaa;
   margin-bottom: 20px;
-  font-weight: bold; }
+  font-size: 1.5em;  }
 
 /* tag_box */
 .tag_box {
