@@ -40,7 +40,8 @@ body {
   font-size: 1.8em;
 }
 code {
-  color: #ff0000;
+  color: #ffffff;
+  background-color: #000000;
 }
 #footer {
   background-color: #232323;
