@@ -7,115 +7,115 @@ tags : [storm]
 ---
 {% include JB/setup %}
 
-This page lists the main concepts of Storm and links to resources where you can find more information. The concepts discussed are:
+本文列出Storm的主要概念以及一些补充资源的链接。主要讨论以下概念：
 
-1. Topologies
-2. Streams
-3. Spouts
-4. Bolts
-5. Stream groupings
-6. Reliability
-7. Tasks
-8. Workers
+1. 拓扑
+2. 流
+3. Spout
+4. Bolt
+5. 流分组策略
+6. 可信性
+7. 任务
+8. 工作进程
 
-### Topologies
+### 拓扑
 
-The logic for a realtime application is packaged into a Storm topology. A Storm topology is analogous to a MapReduce job. One key difference is that a MapReduce job eventually finishes, whereas a topology runs forever (or until you kill it, of course). A topology is a graph of spouts and bolts that are connected with stream groupings. These concepts are described below.
+实时计算应用的逻辑被封装到Storm拓扑中。Storm拓扑类似MapReduce任务。一个关键的不同点是MapReduce任务终将结束，而拓扑将持续运行直到用户手工终止。拓扑是由流分组连接起来的spout和bolt组成的图。这些概念描述如下。
 
-**Resources:**
+**资源：**
 
-* [TopologyBuilder](/javadoc/apidocs/backtype/storm/topology/TopologyBuilder.html): use this class to construct topologies in Java
-* [Running topologies on a production cluster](Running-topologies-on-a-production-cluster.html)
-* [Local mode](Local-mode.html): Read this to learn how to develop and test topologies in local mode.
+* [TopologyBuilder](/javadoc/apidocs/backtype/storm/topology/TopologyBuilder.html)：Java中通过此类构造拓扑。
+* [在生产集群中运行拓扑](storm-running-topologies-on-a-production-cluster.html)
+* [本地模式](storm-local-mode.html)：如何在本地模式中开发和测试拓扑。
 
-### Streams
+### 流
 
-The stream is the core abstraction in Storm. A stream is an unbounded sequence of tuples that is processed and created in parallel in a distributed fashion. Streams are defined with a schema that names the fields in the stream's tuples. By default, tuples can contain integers, longs, shorts, bytes, strings, doubles, floats, booleans, and byte arrays. You can also define your own serializers so that custom types can be used natively within tuples.
+流是Storm的核心抽象概念。流是无穷的元组序列，可被分布式地并行创建和处理。流可以通过在模式中指定字段名称来定义。默认情况下，流可以包含integer、long、short、byte、string、double、float、boolean和byte数组。用户也可以通过定义序列化器来在元组中使用自定义类型。
 
-Every stream is given an id when declared. Since single-stream spouts and bolts are so common, [OutputFieldsDeclarer](/javadoc/apidocs/backtype/storm/topology/OutputFieldsDeclarer.html) has convenience methods for declaring a single stream without specifying an id. In this case, the stream is given the default id of "default".
+流在声明时需要指定一个id。由于一般spout和bolt只有一个流，[OutputFieldsDeclarer](/javadoc/apidocs/backtype/storm/topology/OutputFieldsDeclarer.html)提供了无需指定id来声明流的简便方法。这时流的默认id为"default"。
 
 
-**Resources:**
+**资源：**
 
-* [Tuple](/javadoc/apidocs/backtype/storm/tuple/Tuple.html): streams are composed of tuples
-* [OutputFieldsDeclarer](/javadoc/apidocs/backtype/storm/topology/OutputFieldsDeclarer.html): used to declare streams and their schemas
-* [Serialization](Serialization.html): Information about Storm's dynamic typing of tuples and declaring custom serializations
-* [ISerialization](/javadoc/apidocs/backtype/storm/serialization/ISerialization.html): custom serializers must implement this interface
-* [CONFIG.TOPOLOGY_SERIALIZATIONS](/javadoc/apidocs/backtype/storm/Config.html#TOPOLOGY_SERIALIZATIONS): custom serializers can be registered using this configuration
+* [Tuple](/javadoc/apidocs/backtype/storm/tuple/Tuple.html)：流由元组组成。
+* [OutputFieldsDeclarer](/javadoc/apidocs/backtype/storm/topology/OutputFieldsDeclarer.html)：用于声明流及其模式。
+* [序列化](storm-serialization.html)：关于Storm的动态类型及自定义序列化器。
+* [ISerialization](/javadoc/apidocs/backtype/storm/serialization/ISerialization.html)：自定义的序列化器需实现此接口。
+* [CONFIG.TOPOLOGY_SERIALIZATIONS](/javadoc/apidocs/backtype/storm/Config.html#TOPOLOGY_SERIALIZATIONS)：自定义的序列化器通过此配置进行注册。
 
-### Spouts
+### Spout
 
-A spout is a source of streams in a topology. Generally spouts will read tuples from an external source and emit them into the topology (e.g. a Kestrel queue or the Twitter API). Spouts can either be __reliable__ or __unreliable__. A reliable spout is capable of replaying a tuple if it failed to be processed by Storm, whereas an unreliable spout forgets about the tuple as soon as it is emitted.
+Spout是拓扑中流的源。一般地，Spout从外部源（如Kestrel队列或Twitter API）读取元组然后发射到拓扑中。Spout可以是__可信的__或__不可信的__。可信的Spout可以在Storm未能成功处理元组时重新发送元组，而不可信的Spout则在元组被发送之后立即清除相关信息。
 
-Spouts can emit more than one stream. To do so, declare multiple streams using the `declareStream` method of [OutputFieldsDeclarer](/javadoc/apidocs/backtype/storm/topology/OutputFieldsDeclarer.html) and specify the stream to emit to when using the `emit` method on [SpoutOutputCollector](/javadoc/apidocs/backtype/storm/spout/SpoutOutputCollector.html).
+Spout可以发射多个流。可通过[OutputFieldsDeclarer](/javadoc/apidocs/backtype/storm/topology/OutputFieldsDeclarer.html)的`declareStream`方法声明多个流，并在使用[SpoutOutputCollector](/javadoc/apidocs/backtype/storm/spout/SpoutOutputCollector.html)的`emit`方法时指定要发射的流。
 
-The main method on spouts is `nextTuple`. `nextTuple` either emits a new tuple into the topology or simply returns if there are no new tuples to emit. It is imperative that `nextTuple` does not block for any spout implementation, because Storm calls all the spout methods on the same thread.
+Spout的核心方法是`nextTuple`。`nextTuple`可以向拓扑发射新的元组，也可以在不需要发射元组时直接返回。由于Storm在同一个线程中调用Spout的方法，所以在Spout的实现中`nextTuple`不能阻塞线程。
 
-The other main methods on spouts are `ack` and `fail`. These are called when Storm detects that a tuple emitted from the spout either successfully completed through the topology or failed to be completed. `ack` and `fail` are only called for reliable spouts. See [the Javadoc](/javadoc/apidocs/backtype/storm/spout/ISpout.html) for more information.
+Spout的其他方法主要有`ack`和`fail`。Storm在检测到从Spout发射出的元组被拓扑完全成功处理或者处理失败时调用这两个方法。Storm只为可信Spout调用`ack`和`fail`方法。参考[API文档](/javadoc/apidocs/backtype/storm/spout/ISpout.html)获得更多信息。
 
-**Resources:**
+**资源：**
 
-* [IRichSpout](/javadoc/apidocs/backtype/storm/topology/IRichSpout.html): this is the interface that spouts must implement.
-* [Guaranteeing message processing](Guaranteeing-message-processing.html)
+* [IRichSpout](/javadoc/apidocs/backtype/storm/topology/IRichSpout.html)：Spout需要实现的接口。
+* [强制消息处理](storm-guaranteeing-message-processing.html)
 
-### Bolts
+### Bolt
 
-All processing in topologies is done in bolts. Bolts can do anything from filtering, functions, aggregations, joins, talking to databases, and more. 
+拓扑的所有处理工作在Bolt中完成。Bolt可以过滤元组、调用方法、聚合元组、连接元组或查询数据库，等等。
 
-Bolts can do simple stream transformations. Doing complex stream transformations often requires multiple steps and thus multiple bolts. For example, transforming a stream of tweets into a stream of trending images requires at least two steps: a bolt to do a rolling count of retweets for each image, and one or more bolts to stream out the top X images (you can do this particular stream transformation in a more scalable way with three bolts than with two). 
+Bolt可以进行简单的流变换。复杂的流变换需要多个步骤，从而需要多个Bolt来实现。例如，将推文流变换为热点话题流至少需要两步：首先，一个Bolt负责计算每个话题相关的推文数，其次，另一个Bolt负责选出相关推文最多的X个话题（如果采用3个Bolt则可以更灵活地进行流变换）。
 
-Bolts can emit more than one stream. To do so, declare multiple streams using the `declareStream` method of [OutputFieldsDeclarer](/javadoc/apidocs/backtype/storm/topology/OutputFieldsDeclarer.html) and specify the stream to emit to when using the `emit` method on [OutputCollector](/javadoc/apidocs/backtype/storm/task/OutputCollector.html).
+Bolt可以发射多个流。可通过[OutputFieldsDeclarer](/javadoc/apidocs/backtype/storm/topology/OutputFieldsDeclarer.html)的`declareStream`方法声明多个流，并在使用[OutputCollector](/javadoc/apidocs/backtype/storm/task/OutputCollector.html)的`emit`方法时指定要发射的流。
 
-When you declare a bolt's input streams, you always subscribe to specific streams of another component. If you want to subscribe to all the streams of another component, you have to subscribe to each one individually. [InputDeclarer](/javadoc/apidocs/backtype/storm/topology/InputDeclarer.html) has syntactic sugar for subscribing to streams declared on the default stream id. Saying `declarer.shuffleGrouping("1")` subscribes to the default stream on component "1" and is equivalent to `declarer.shuffleGrouping("1", DEFAULT_STREAM_ID)`.
+声明Bolt的输入流时，总是需要订阅其他节点的某个流。如果需要订阅某个节点的所有流，只能逐次分别订阅。[InputDeclarer](/javadoc/apidocs/backtype/storm/topology/InputDeclarer.html)提供了定义默认流的简便方法。调用`declarer.shuffleGrouping("1")`即可订阅节点"1"的默认流，这和`declarer.shuffleGrouping("1", DEFAULT_STREAM_ID)`是等价的。
 
-The main method in bolts is the `execute` method which takes in as input a new tuple. Bolts emit new tuples using the [OutputCollector](/javadoc/apidocs/backtype/storm/task/OutputCollector.html) object. Bolts must call the `ack` method on the `OutputCollector` for every tuple they process so that Storm knows when tuples are completed (and can eventually determine that its safe to ack the original spout tuples). For the common case of processing an input tuple, emitting 0 or more tuples based on that tuple, and then acking the input tuple, Storm provides an [IBasicBolt](/javadoc/apidocs/backtype/storm/topology/IBasicBolt.html) interface which does the acking automatically.
+Bolt的核心方法是`execute`，它接受元组作为输入。Bolt通过[OutputCollector](/javadoc/apidocs/backtype/storm/task/OutputCollector.html)对象发射元组。Bolt必须为每个处理的元组调用`OutputCollector`的`ack`方法以通知Storm此元组已被成功处理（从而Storm可以安全确认最初的Spout发出的元组被成功处理）。为实现常规的处理输入元组、发射0个或多个相应元组并确认输入元组的逻辑，Storm提供了[IBasicBolt](/javadoc/apidocs/backtype/storm/topology/IBasicBolt.html)接口以自动完成确认操作。
 
-Please note that [OutputCollector](/javadoc/apidocs/backtype/storm/task/OutputCollector.html) is not thread-safe, and all emits, acks, and fails must happen on the same thread. Please refer [Troubleshooting](troubleshooting.html) for more details.
+注意，[OutputCollector](/javadoc/apidocs/backtype/storm/task/OutputCollector.html)不是线程安全的，所有的发射、确认和失败操作都必须在同一个线程中完成。更多细节请参考[故障排查](storm-troubleshooting.html)。
 
-**Resources:**
+**资源：**
 
-* [IRichBolt](/javadoc/apidocs/backtype/storm/topology/IRichBolt.html): this is general interface for bolts.
-* [IBasicBolt](/javadoc/apidocs/backtype/storm/topology/IBasicBolt.html): this is a convenience interface for defining bolts that do filtering or simple functions.
-* [OutputCollector](/javadoc/apidocs/backtype/storm/task/OutputCollector.html): bolts emit tuples to their output streams using an instance of this class
-* [Guaranteeing message processing](Guaranteeing-message-processing.html)
+* [IRichBolt](/javadoc/apidocs/backtype/storm/topology/IRichBolt.html)：Bolt的通用接口。
+* [IBasicBolt](/javadoc/apidocs/backtype/storm/topology/IBasicBolt.html)：定义实现过滤或简单功能的Bolt的简便接口。
+* [OutputCollector](/javadoc/apidocs/backtype/storm/task/OutputCollector.html)：Bolt通过此类实例向其输出流发射元组。
+* [强制消息处理](storm-guaranteeing-message-processing.html)
 
-### Stream groupings
+### 流分组策略
 
-Part of defining a topology is specifying for each bolt which streams it should receive as input. A stream grouping defines how that stream should be partitioned among the bolt's tasks.
+定义拓扑时需要为每个Bolt指定其所要读取的流。流分组策略定义了流是如何在Bolt的任务之间进行分组的。
 
-There are eight built-in stream groupings in Storm, and you can implement a custom stream grouping by implementing the [CustomStreamGrouping](/javadoc/apidocs/backtype/storm/grouping/CustomStreamGrouping.html) interface:
+Storm有8种内建分组策略，同时用户可以通过实现[CustomStreamGrouping](/javadoc/apidocs/backtype/storm/grouping/CustomStreamGrouping.html)接口来实现自定义的分组策略。
 
-1. **Shuffle grouping**: Tuples are randomly distributed across the bolt's tasks in a way such that each bolt is guaranteed to get an equal number of tuples.
-2. **Fields grouping**: The stream is partitioned by the fields specified in the grouping. For example, if the stream is grouped by the "user-id" field, tuples with the same "user-id" will always go to the same task, but tuples with different "user-id"'s may go to different tasks.
-3. **Partial Key grouping**: The stream is partitioned by the fields specified in the grouping, like the Fields grouping, but are load balanced between two downstream bolts, which provides better utilization of resources when the incoming data is skewed. [This paper](https://melmeric.files.wordpress.com/2014/11/the-power-of-both-choices-practical-load-balancing-for-distributed-stream-processing-engines.pdf) provides a good explanation of how it works and the advantages it provides.
-4. **All grouping**: The stream is replicated across all the bolt's tasks. Use this grouping with care.
-5. **Global grouping**: The entire stream goes to a single one of the bolt's tasks. Specifically, it goes to the task with the lowest id.
-6. **None grouping**: This grouping specifies that you don't care how the stream is grouped. Currently, none groupings are equivalent to shuffle groupings. Eventually though, Storm will push down bolts with none groupings to execute in the same thread as the bolt or spout they subscribe from (when possible).
-7. **Direct grouping**: This is a special kind of grouping. A stream grouped this way means that the __producer__ of the tuple decides which task of the consumer will receive this tuple. Direct groupings can only be declared on streams that have been declared as direct streams. Tuples emitted to a direct stream must be emitted using one of the [emitDirect](/javadoc/apidocs/backtype/storm/task/OutputCollector.html#emitDirect(int, int, java.util.List) methods. A bolt can get the task ids of its consumers by either using the provided [TopologyContext](/javadoc/apidocs/backtype/storm/task/TopologyContext.html) or by keeping track of the output of the `emit` method in [OutputCollector](/javadoc/apidocs/backtype/storm/task/OutputCollector.html) (which returns the task ids that the tuple was sent to).
-8. **Local or shuffle grouping**: If the target bolt has one or more tasks in the same worker process, tuples will be shuffled to just those in-process tasks. Otherwise, this acts like a normal shuffle grouping.
+1. **随机分组**：元组在Bolt的任务之间随机分配，每个Bolt任务将获得相同数量的元组。
+2. **字段分组**：流根据指定字段的值进行分组。例如，如果流按照"user-id"字段进行分组，则具有相同"user-id"的元组总是被发送到同一个任务，而不同"user-id"的元组则可能被发送到不同的任务。
+3. **部分键分组**：类似字段分组，流根据指定字段的值进行分组，但是在下游的Bolt任务之间会进行负载均衡，这样在数据发生抖动时可以更好地利用资源。[相关论文](https://melmeric.files.wordpress.com/2014/11/the-power-of-both-choices-practical-load-balancing-for-distributed-stream-processing-engines.pdf)详细介绍了其实现机制和带来的好处。
+4. **全部分组**：流在Bolt的所有任务上进行复制。慎用此分组策略。
+5. **全局分组**：整个流被发送到Bolt的某个特定任务。准确地说，是具有最小id的任务。
+6. **无分组**：表明用户并不关心流如何被分组。目前，无分组和随机分组是等价的。未来Storm可能会将指定为无分组的Bolt放到所订阅的Bolt或Spout所在线程中执行。
+7. **直接分组**：这是一种特殊的分组策略。这意味着由元组的__生产者__来决定消费的哪个任务来接收元组。直接分组只能被直接流声明。被发射到直接流的元组只能通过[emitDirect](/javadoc/apidocs/backtype/storm/task/OutputCollector.html#emitDirect(int, int, java.util.List)方法之一来发送。Bolt可以通过[TopologyContext](/javadoc/apidocs/backtype/storm/task/TopologyContext.html)来获取其消费者的任务id。通过跟踪[OutputCollector](/javadoc/apidocs/backtype/storm/task/OutputCollector.html)的`emit`方法的返回值（元组所发送到的任务的id）也可以实现此目的。
+8. **本地随机分组**：如果目标Bolt在同一个工作进程中有一个或多个任务，元组只会被发送到进程内任务。否则，和普通的随机分组并无区别。
 
-**Resources:**
+**资源：**
 
-* [TopologyBuilder](/javadoc/apidocs/backtype/storm/topology/TopologyBuilder.html): use this class to define topologies
-* [InputDeclarer](/javadoc/apidocs/backtype/storm/topology/InputDeclarer.html): this object is returned whenever `setBolt` is called on `TopologyBuilder` and is used for declaring a bolt's input streams and how those streams should be grouped
-* [CoordinatedBolt](/javadoc/apidocs/backtype/storm/task/CoordinatedBolt.html): this bolt is useful for distributed RPC topologies and makes heavy use of direct streams and direct groupings
+* [TopologyBuilder](/javadoc/apidocs/backtype/storm/topology/TopologyBuilder.html)：用于定义拓扑。
+* [InputDeclarer](/javadoc/apidocs/backtype/storm/topology/InputDeclarer.html)：`TopologyBuilder`的`setBolt`方法返回此对象，用于声明Bolt的输入流以及流的分组策略。
+* [CoordinatedBolt](/javadoc/apidocs/backtype/storm/task/CoordinatedBolt.html)：此Bolt在分布式RPC拓扑中被用到，并大量使用了直接流和直接分组。
 
-### Reliability
+### 可信性
 
-Storm guarantees that every spout tuple will be fully processed by the topology. It does this by tracking the tree of tuples triggered by every spout tuple and determining when that tree of tuples has been successfully completed. Every topology has a "message timeout" associated with it. If Storm fails to detect that a spout tuple has been completed within that timeout, then it fails the tuple and replays it later. 
+Storm保证每个从Spout发射出的元组都被拓扑充分处理。这是通过跟踪一颗由Spout发出的元组所触发的元组树来实现的。每个拓扑都会设置一个消息超时时间。如果Storm在规定的超时时间内没有检测到Spout发出的元组被成功处理，则认为处理失败并在稍后重新发送元组。
 
-To take advantage of Storm's reliability capabilities, you must tell Storm when new edges in a tuple tree are being created and tell Storm whenever you've finished processing an individual tuple. These are done using the [OutputCollector](/javadoc/apidocs/backtype/storm/task/OutputCollector.html) object that bolts use to emit tuples. Anchoring is done in the `emit` method, and you declare that you're finished with a tuple using the `ack` method.
+要利用Storm的可信性特性，用户必须在向元组树中添加新边和成功处理某个元组时通知Storm。这是通过Bolt用来发射元组的[OutputCollector](/javadoc/apidocs/backtype/storm/task/OutputCollector.html)对象来完成的。添加新边在`emit`方法中实现，确认元组被成功处理则通过调用`ack`方法实现。
 
-This is all explained in much more detail in [Guaranteeing message processing](Guaranteeing-message-processing.html). 
+这部分内容在[强制消息处理](storm-guaranteeing-message-processing.html)一文中进行更详细的说明。
 
-### Tasks
+### 任务
 
-Each spout or bolt executes as many tasks across the cluster. Each task corresponds to one thread of execution, and stream groupings define how to send tuples from one set of tasks to another set of tasks. You set the parallelism for each spout or bolt in the `setSpout` and `setBolt` methods of [TopologyBuilder](/javadoc/apidocs/backtype/storm/topology/TopologyBuilder.html).
+Spout或Bolt在集群中以任务的形式被执行。每个任务对应一个线程，同时流分组策略定义了如何从一个任务集向另一个任务集发送元组。用户通过[TopologyBuilder](/javadoc/apidocs/backtype/storm/topology/TopologyBuilder.html)的`setSpout`和`setBolt`方法设置每个Spout或Bolt的并行度。
 
-### Workers
+### 工作进程
 
-Topologies execute across one or more worker processes. Each worker process is a physical JVM and executes a subset of all the tasks for the topology. For example, if the combined parallelism of the topology is 300 and 50 workers are allocated, then each worker will execute 6 tasks (as threads within the worker). Storm tries to spread the tasks evenly across all the workers.
+拓扑在一个或多个工作进程中运行。每个工作进程是一个物理JVM并执行拓扑任务的一个子集。例如，如果拓扑的总体并行度为300且分配了50个工作进程，则每个工作进程将执行6个任务（工作进程内部的线程）。Storm尝试在所有的工作进程之间平均分配任务。
 
-**Resources:**
+**资源：**
 
-* [Config.TOPOLOGY_WORKERS](/javadoc/apidocs/backtype/storm/Config.html#TOPOLOGY_WORKERS): this config sets the number of workers to allocate for executing the topology
+* [Config.TOPOLOGY_WORKERS](/javadoc/apidocs/backtype/storm/Config.html#TOPOLOGY_WORKERS)：设置运行拓扑时分配的工作进程的数量。
