@@ -7,63 +7,63 @@ tags : [storm]
 ---
 {% include JB/setup %}
 
-In this tutorial, you'll learn how to create Storm topologies and deploy them to a Storm cluster. Java will be the main language used, but a few examples will use Python to illustrate Storm's multi-language capabilities.
+本文介绍如何创建Storm拓扑（topology）并将其部署到Storm集群上。使用的主要语言为Java，在介绍Storm的多语言特性时也会用Python作为示范。
 
-## Preliminaries
+## 预备知识
 
-This tutorial uses examples from the [storm-starter](https://github.com/apache/storm/blob/master/examples/storm-starter) project. It's recommended that you clone the project and follow along with the examples. Read [Setting up a development environment](Setting-up-development-environment.html) and [Creating a new Storm project](Creating-a-new-Storm-project.html) to get your machine set up.
+本文使用的例子来自于[storm-starter](https://github.com/apache/storm/blob/master/examples/storm-starter)。推荐将此工程复制到本地。进一步的操作请参考[建立开发环境](storm-setting-up-development-environment.html)和[创建新的Storm工程](storm-creating-a-new-storm-project.html)。
 
-## Components of a Storm cluster
+## Storm集群的组成
 
-A Storm cluster is superficially similar to a Hadoop cluster. Whereas on Hadoop you run "MapReduce jobs", on Storm you run "topologies". "Jobs" and "topologies" themselves are very different -- one key difference is that a MapReduce job eventually finishes, whereas a topology processes messages forever (or until you kill it).
+Storm集群和Hadoop集群看起来很相似。在Hadoop上运行的是MapReduce任务，而在Storm上运行的是拓扑。任务与拓扑差别很大，其中一个关键的不同是MapReduce任务终将结束运行，而拓扑进程将不停地处理消息（除非被手动终止）。
 
-There are two kinds of nodes on a Storm cluster: the master node and the worker nodes. The master node runs a daemon called "Nimbus" that is similar to Hadoop's "JobTracker". Nimbus is responsible for distributing code around the cluster, assigning tasks to machines, and monitoring for failures.
+Storm集群中有两种节点，即主节点（master node）和工作节点（worker node）。类似Hadoop的JobTracker，主节点运行一个叫做nimbus的守护进程。nimbus负责分发代码、分配任务和监控故障。
 
-Each worker node runs a daemon called the "Supervisor". The supervisor listens for work assigned to its machine and starts and stops worker processes as necessary based on what Nimbus has assigned to it. Each worker process executes a subset of a topology; a running topology consists of many worker processes spread across many machines.
+每个工作节点运行一个叫做supervisor的守护进程。supervisor监听分配给宿主机的任务，并按照nimbus的指令启动或终止工作进程。每个工作进程运行的是一个拓扑的子集，每个运行中的拓扑由分布在多台机器上的工作进程组成。
 
-![Storm cluster](/images/storm-cluster.png)
+![Storm集群](/images/storm-cluster.png)
 
-All coordination between Nimbus and the Supervisors is done through a [Zookeeper](http://zookeeper.apache.org/) cluster. Additionally, the Nimbus daemon and Supervisor daemons are fail-fast and stateless; all state is kept in Zookeeper or on local disk. This means you can kill -9 Nimbus or the Supervisors and they'll start back up like nothing happened. This design leads to Storm clusters being incredibly stable.
+nimbus和supervisor之间的配合通过[Zookeeper](http://zookeeper.apache.org/)集群来完成。另外，nimbus和supervisor守护进程都是速错（fail-fast）和无状态的，所有的状态都保存在zookeeper或者本地磁盘中。这意味着nimbus或supervisor进程可以轻松重启。这样的设计使得Storm集群非常稳定。
 
-## Topologies
+## 拓扑
 
-To do realtime computation on Storm, you create what are called "topologies". A topology is a graph of computation. Each node in a topology contains processing logic, and links between nodes indicate how data should be passed around between nodes.
+要在Storm上进行实时计算，需要创建拓扑。拓扑即计算的图结构。拓扑中的每个节点上都有处理逻辑，节点间的边定义了数据的流向。
 
-Running a topology is straightforward. First, you package all your code and dependencies into a single jar. Then, you run a command like the following:
+运行拓扑非常简单。首先，将所有代码及依赖项打包为一个jar包，然后运行如下命令：
 
 ```
 storm jar all-my-code.jar backtype.storm.MyTopology arg1 arg2
 ```
 
-This runs the class `backtype.storm.MyTopology` with the arguments `arg1` and `arg2`. The main function of the class defines the topology and submits it to Nimbus. The `storm jar` part takes care of connecting to Nimbus and uploading the jar.
+此命令运行类`backtype.storm.MyTopology`，参数为`arg1`和`arg2`。类中的main方法定义了拓扑并提交到nimbus。`storm jar`负责连接nimbus并上传jar包。
 
-Since topology definitions are just Thrift structs, and Nimbus is a Thrift service, you can create and submit topologies using any programming language. The above example is the easiest way to do it from a JVM-based language. See [Running topologies on a production cluster](Running-topologies-on-a-production-cluster.html) for more information on starting and stopping topologies.
+由于拓扑定义实际上是thrift结构体，而且nimbus是一个thrift服务，所以可以使用任意语言来创建和提交拓扑。上面的例子是使用基于JVM的语言的最简单的方法。关于启动/停止拓扑的更多信息请参考[在生产集群中运行拓扑](storm-running-topologies-on-a-production-cluster.html)。
 
-## Streams
+## 流
 
-The core abstraction in Storm is the "stream". A stream is an unbounded sequence of tuples. Storm provides the primitives for transforming a stream into a new stream in a distributed and reliable way. For example, you may transform a stream of tweets into a stream of trending topics.
+Storm中最核心的抽象概念是流。流是无穷的元组序列。Storm提供了一组原语用于变换流，这些变换是分布式且可靠的。例如，可以将推文流转化为热点话题流。
 
-The basic primitives Storm provides for doing stream transformations are "spouts" and "bolts". Spouts and bolts have interfaces that you implement to run your application-specific logic.
+Storm提供的用于变换流的最基本的原语是spout和bolt。spout和bolt提供了一组接口，需要实现这些接口以运行应用程序逻辑。
 
-A spout is a source of streams. For example, a spout may read tuples off of a [Kestrel](http://github.com/nathanmarz/storm-kestrel) queue and emit them as a stream. Or a spout may connect to the Twitter API and emit a stream of tweets.
+spout是流的源。例如，spout可以从[Kestrel](http://github.com/nathanmarz/storm-kestrel)队列读取元组，然后作为流发射出去。spout也可以连接到Twitter API然后发射推文流。
 
-A bolt consumes any number of input streams, does some processing, and possibly emits new streams. Complex stream transformations, like computing a stream of trending topics from a stream of tweets, require multiple steps and thus multiple bolts. Bolts can do anything from run functions, filter tuples, do streaming aggregations, do streaming joins, talk to databases, and more.
+bolt接收流的输入、进行处理并可能发射新的流。诸如通过推文流计算热点话题流的复杂流变换需要多步来完成，所以需要通过多个bolt来实现。bolt可以运行方法、过滤元组、聚合流、连接流或者查询数据库，等等。
 
-Networks of spouts and bolts are packaged into a "topology" which is the top-level abstraction that you submit to Storm clusters for execution. A topology is a graph of stream transformations where each node is a spout or bolt. Edges in the graph indicate which bolts are subscribing to which streams. When a spout or bolt emits a tuple to a stream, it sends the tuple to every bolt that subscribed to that stream.
+spout和bolt组成的网状结构被打包为最顶层的抽象概念——拓扑，并被提交到Storm集群进行执行。拓扑是一个流变换图，其中的节点是spout或bolt之一。图中的边说明了bolt和流之间的订阅关系。当spout或bolt向流中发射元组时，该元组被发送到所有订阅该流的bolt。
 
-![A Storm topology](/images/topology.png)
+![Storm拓扑](/images/topology.png)
 
-Links between nodes in your topology indicate how tuples should be passed around. For example, if there is a link between Spout A and Bolt B, a link from Spout A to Bolt C, and a link from Bolt B to Bolt C, then everytime Spout A emits a tuple, it will send the tuple to both Bolt B and Bolt C. All of Bolt B's output tuples will go to Bolt C as well.
+拓扑中节点之间的链接定义了元组如何被传递。例如，spout A和bolt B之间、spout A和bolt C之间以及bolt B和bolt C之间各有一条链接，则每次spout A发射元组时，该元组都会被发送到bolt B和bolt C。bolt B的输出元组则被发送到bolt C。
 
-Each node in a Storm topology executes in parallel. In your topology, you can specify how much parallelism you want for each node, and then Storm will spawn that number of threads across the cluster to do the execution.
+Storm拓扑中的每个节点都是并行执行的。在拓扑中，可以为每个节点指定并行度，Storm会在集群中创建指定数目的线程来执行任务。
 
-A topology runs forever, or until you kill it. Storm will automatically reassign any failed tasks. Additionally, Storm guarantees that there will be no data loss, even if machines go down and messages are dropped.
+拓扑持续运行，直到被手工终止。Storm会自动重新分配失败的任务。另外，即使机器停机或者消息被丢弃，Storm也可以保证数据不丢失。
 
-## Data model
+## 数据模型
 
-Storm uses tuples as its data model. A tuple is a named list of values, and a field in a tuple can be an object of any type. Out of the box, Storm supports all the primitive types, strings, and byte arrays as tuple field values. To use an object of another type, you just need to implement [a serializer](Serialization.html) for the type.
+Storm使用元组作为数据模型。元组是一个命名值列表，其中的每个字段可以是任意类型的对象。Storm本身支持所有的基本类型用作元组的值字段，包括string和byte数组。要使用其他类型，需要实现该类型对应的[序列化器](storm-serialization.html)。
 
-Every node in a topology must declare the output fields for the tuples it emits. For example, this bolt declares that it emits 2-tuples with the fields "double" and "triple":
+拓扑中的每个节点必须声明所要发射的元组的字段。例如，下面的bolt声明它将发送一个二元组，其中字段为“double”和“triple”：
 
 ```java
 public class DoubleAndTripleBolt extends BaseRichBolt {
@@ -88,11 +88,11 @@ public class DoubleAndTripleBolt extends BaseRichBolt {
 }
 ```
 
-The `declareOutputFields` function declares the output fields `["double", "triple"]` for the component. The rest of the bolt will be explained in the upcoming sections.
+`declareOutputFields`方法为组件声明了输出字段`["double", "triple"]`。其余部分将在下面的小节中进行解释。
 
-## A simple topology
+## 一个简单的拓扑
 
-Let's take a look at a simple topology to explore the concepts more and see how the code shapes up. Let's look at the `ExclamationTopology` definition from storm-starter:
+我们通过一个简单的拓扑来介绍一下基本概念和代码结构。下面是storm-starter中的`ExclamationTopology`：
 
 ```java
 TopologyBuilder builder = new TopologyBuilder();        
@@ -103,17 +103,17 @@ builder.setBolt("exclaim2", new ExclamationBolt(), 2)
         .shuffleGrouping("exclaim1");
 ```
 
-This topology contains a spout and two bolts. The spout emits words, and each bolt appends the string "!!!" to its input. The nodes are arranged in a line: the spout emits to the first bolt which then emits to the second bolt. If the spout emits the tuples ["bob"] and ["john"], then the second bolt will emit the words ["bob!!!!!!"] and ["john!!!!!!"].
+这个拓扑包含一个spout和两个bolt。spout发射单词，bolt则向读取的单词末尾添加字符串"!!!"。节点按线性排列，即spout发射到第一个bolt，后者则发射到第二个bolt。如果spout发射了元组["bob"]和["john"]，则第二个bolt将发射单词["bob!!!!!!"]和["john!!!!!!"]。
 
-This code defines the nodes using the `setSpout` and `setBolt` methods. These methods take as input a user-specified id, an object containing the processing logic, and the amount of parallelism you want for the node. In this example, the spout is given id "words" and the bolts are given ids "exclaim1" and "exclaim2". 
+这段代码使用`setSpout`和`setBolt`方法来定义节点。这些方法接受一个用户定义的id、一个包含处理逻辑的对象和节点的并行度作为输入。在本例中，spout的id为"words"，bolt的id则分别为"exclaim1"和"exclaim2"。
 
-The object containing the processing logic implements the [IRichSpout](/javadoc/apidocs/backtype/storm/topology/IRichSpout.html) interface for spouts and the [IRichBolt](/javadoc/apidocs/backtype/storm/topology/IRichBolt.html) interface for bolts.
+包含处理逻辑的对象实现了spout的[IRichSpout](/javadoc/apidocs/backtype/storm/topology/IRichSpout.html)接口和bolt的[IRichBolt](/javadoc/apidocs/backtype/storm/topology/IRichBolt.html)接口。
 
-The last parameter, how much parallelism you want for the node, is optional. It indicates how many threads should execute that component across the cluster. If you omit it, Storm will only allocate one thread for that node.
+最后一个定义节点并行度的参数是可选的。它指定了集群中应该有多少个线程用于执行此组件的任务。如果不指定这个参数，Storm只会为此节点分配一个线程。
 
-`setBolt` returns an [InputDeclarer](/javadoc/apidocs/backtype/storm/topology/InputDeclarer.html) object that is used to define the inputs to the Bolt. Here, component "exclaim1" declares that it wants to read all the tuples emitted by component "words" using a shuffle grouping, and component "exclaim2" declares that it wants to read all the tuples emitted by component "exclaim1" using a shuffle grouping. "shuffle grouping" means that tuples should be randomly distributed from the input tasks to the bolt's tasks. There are many ways to group data between components. These will be explained in a few sections.
+`setBolt`返回一个[InputDeclarer](/javadoc/apidocs/backtype/storm/topology/InputDeclarer.html)对象，该对象用于定义bolt的输入。本例中，节点"exclaim1"声明希望读取节点"words"所发射的全部元组且分组策略为随机分组（shuffle grouping），而节点"exclaim2"声明希望读取节点"exclaim1"所发射的全部元组且分组策略同样为随机分组。随机分组意味着元组从输入任务传送到bolt的任务时是随机分布的。节点间的数据分组策略有很多种，将在稍后进行说明。
 
-If you wanted component "exclaim2" to read all the tuples emitted by both component "words" and component "exclaim1", you would write component "exclaim2"'s definition like this:
+如果需要节点"exclaim2"同时读取从节点"words"和节点"exclaim1"发射的全部元组，则应将节点"exclaim2"定义为：
 
 ```java
 builder.setBolt("exclaim2", new ExclamationBolt(), 5)
@@ -121,9 +121,9 @@ builder.setBolt("exclaim2", new ExclamationBolt(), 5)
             .shuffleGrouping("exclaim1");
 ```
 
-As you can see, input declarations can be chained to specify multiple sources for the Bolt.
+如上所示，可以通过链接输入声明来为bolt指定多个源。
 
-Let's dig into the implementations of the spouts and bolts in this topology. Spouts are responsible for emitting new messages into the topology. `TestWordSpout` in this topology emits a random word from the list ["nathan", "mike", "jackson", "golda", "bertels"] as a 1-tuple every 100ms. The implementation of `nextTuple()` in TestWordSpout looks like this:
+接下来看看这个拓扑中spout和bolt的实现。spout负责向拓扑中发射新消息。这个拓扑中的`TestWordSpout`每100ms从列表["nathan", "mike", "jackson", "golda", "bertels"]中随机选择一个单词作为一元组进行发射。`TestWordSpout`的`nextTuple()`方法实现如下：
 
 ```java
 public void nextTuple() {
@@ -135,9 +135,9 @@ public void nextTuple() {
 }
 ```
 
-As you can see, the implementation is very straightforward.
+可以看到实现非常简单。
 
-`ExclamationBolt` appends the string "!!!" to its input. Let's take a look at the full implementation for `ExclamationBolt`:
+`ExclamationBolt`在输入之后添加字符串"!!!"。下面来看一下`ExclamationBolt`的完整实现：
 
 ```java
 public static class ExclamationBolt implements IRichBolt {
@@ -170,19 +170,19 @@ public static class ExclamationBolt implements IRichBolt {
 }
 ```
 
-The `prepare` method provides the bolt with an `OutputCollector` that is used for emitting tuples from this bolt. Tuples can be emitted at anytime from the bolt -- in the `prepare`, `execute`, or `cleanup` methods, or even asynchronously in another thread. This `prepare` implementation simply saves the `OutputCollector` as an instance variable to be used later on in the `execute` method.
+`prepare`方法为bolt提供了一个`OutputCollector`对象用于发射元组。元组可在任意时刻被发射，无论是在`prepare`，`execute`还是`cleanup`方法中，甚至在其他线程中异步发射也可以。本例中，`prepare`只是将`OutputCollector`保存为一个变量，稍后在`execute`方法中使用。
 
-The `execute` method receives a tuple from one of the bolt's inputs. The `ExclamationBolt` grabs the first field from the tuple and emits a new tuple with the string "!!!" appended to it. If you implement a bolt that subscribes to multiple input sources, you can find out which component the [Tuple](/javadoc/apidocs/backtype/storm/tuple/Tuple.html) came from by using the `Tuple#getSourceComponent` method.
+`execute`方法接受来自bolt的一个输入的元组。`ExclamationBolt`提取元组的第一个字段，添加后缀字符串"!!!"之后放入输出流。如果实现的bolt订阅了多个输入源，可以通过`Tuple#getSourceComponent`方法获得[元组](/javadoc/apidocs/backtype/storm/tuple/Tuple.html)的来源。
 
-There's a few other things going on in the `execute` method, namely that the input tuple is passed as the first argument to `emit` and the input tuple is acked on the final line. These are part of Storm's reliability API for guaranteeing no data loss and will be explained later in this tutorial. 
+`execute`方法还完成了一些其他任务，例如输入元组被作为第一个参数传递给了`emit`方法，并且在最后一行输入元组被确认。这是Storm的可靠性API，用来确保不会发生数据丢失。本文稍后将予以说明。
 
-The `cleanup` method is called when a Bolt is being shutdown and should cleanup any resources that were opened. There's no guarantee that this method will be called on the cluster: for example, if the machine the task is running on blows up, there's no way to invoke the method. The `cleanup` method is intended for when you run topologies in [local mode](Local-mode.html) (where a Storm cluster is simulated in process), and you want to be able to run and kill many topologies without suffering any resource leaks.
+bolt关闭时应该释放任何已打开的资源，这通过调用`cleanup`方法来完成。在集群中并不保证此方法被调用。例如运行任务的机器停机，则没有机会来调用此方法。`cleanup`方法主要在[本地模式](storm-local-mode.html)（其中Storm集群通过进程来模拟）中被调用，这样就可以任意启停拓扑而不用担心资源泄露。
 
-The `declareOutputFields` method declares that the `ExclamationBolt` emits 1-tuples with one field called "word".
+`declareOutputFields`方法声明`ExclamationBolt`发射的是只包含一个字段"word"的一元组。
 
-The `getComponentConfiguration` method allows you to configure various aspects of how this component runs. This is a more advanced topic that is explained further on [Configuration](Configuration.html).
+`getComponentConfiguration`方法允许用户配置节点运行时的各种属性。这是一个高级主题，将在[配置](Configuration.html)一文中进行讲解。
 
-Methods like `cleanup` and `getComponentConfiguration` are often not needed in a bolt implementation. You can define bolts more succinctly by using a base class that provides default implementations where appropriate. `ExclamationBolt` can be written more succinctly by extending `BaseRichBolt`, like so:
+诸如`cleanup`和`getComponentConfiguration`的方法一般不需要实现。必要时，用户可以通过继承提供了这些方法的缺省实现的类来更简洁地定义bolt。`ExclamationBolt`可以通过继承`BaseRichBolt`进行重写：
 
 ```java
 public static class ExclamationBolt extends BaseRichBolt {
@@ -206,15 +206,15 @@ public static class ExclamationBolt extends BaseRichBolt {
 }
 ```
 
-## Running ExclamationTopology in local mode
+## 本地模式运行ExclamationTopology
 
-Let's see how to run the `ExclamationTopology` in local mode and see that it's working.
+下面介绍如何以本地模式运行`ExclamationTopology`并且观察它是如何工作的。
 
-Storm has two modes of operation: local mode and distributed mode. In local mode, Storm executes completely in process by simulating worker nodes with threads. Local mode is useful for testing and development of topologies. When you run the topologies in storm-starter, they'll run in local mode and you'll be able to see what messages each component is emitting. You can read more about running topologies in local mode on [Local mode](Local-mode.html).
+Storm有两种模式：本地模式和分布式模式。在本地模式中，Storm完全在单个进程中运行，并通过线程来模拟工作节点。本地模式在开发和测试拓扑时非常有用。storm-starter中的拓扑可以以本地模式运行，可以通过控制台观察每个节点所发射的信息。关于在本地模式中运行拓扑的其他信息请参考[本地模式](storm-local-mode.html)。
 
-In distributed mode, Storm operates as a cluster of machines. When you submit a topology to the master, you also submit all the code necessary to run the topology. The master will take care of distributing your code and allocating workers to run your topology. If workers go down, the master will reassign them somewhere else. You can read more about running topologies on a cluster on [Running topologies on a production cluster](Running-topologies-on-a-production-cluster.html)]. 
+在分布式模式中，Storm作为集群来运行。用户向master提交拓扑时，运行拓扑所需的所有代码被一并提交。master负责分发代码和分配工作线程来运行拓扑。如果工作线程终止，master会重新分配任务。关于在集群中运行拓扑的更多信息可以参考[在生产集群中运行拓扑](storm-running-topologies-on-a-production-cluster.html)]. 
 
-Here's the code that runs `ExclamationTopology` in local mode:
+下面是在本地模式中运行`ExclamationTopology`的代码：
 
 ```java
 Config conf = new Config();
@@ -228,28 +228,28 @@ cluster.killTopology("test");
 cluster.shutdown();
 ```
 
-First, the code defines an in-process cluster by creating a `LocalCluster` object. Submitting topologies to this virtual cluster is identical to submitting topologies to distributed clusters. It submits a topology to the `LocalCluster` by calling `submitTopology`, which takes as arguments a name for the running topology, a configuration for the topology, and then the topology itself.
+首先，通过创建`LocalCluster`对象，代码定义了一个进程内集群。向这个虚拟集群提交拓扑和向分布式集群提交拓扑是等价的。代码调用`submitTopology`方法向`LocalCluster`提交拓扑，该方法接受的参数为拓扑名称、拓扑配置和拓扑对象本身。
 
-The name is used to identify the topology so that you can kill it later on. A topology will run indefinitely until you kill it.
+拓扑名称用于标识拓扑，稍后用于终止拓扑。拓扑将持续运行，直到用户手工终止。
 
-The configuration is used to tune various aspects of the running topology. The two configurations specified here are very common:
+配置用来调整运行中的拓扑的各种属性。这里列出两类常用的配置：
 
-1. **TOPOLOGY_WORKERS** (set with `setNumWorkers`) specifies how many _processes_ you want allocated around the cluster to execute the topology. Each component in the topology will execute as many _threads_. The number of threads allocated to a given component is configured through the `setBolt` and `setSpout` methods. Those _threads_ exist within worker _processes_. Each worker _process_ contains within it some number of _threads_ for some number of components. For instance, you may have 300 threads specified across all your components and 50 worker processes specified in your config. Each worker process will execute 6 threads, each of which of could belong to a different component. You tune the performance of Storm topologies by tweaking the parallelism for each component and the number of worker processes those threads should run within.
-2. **TOPOLOGY_DEBUG** (set with `setDebug`), when set to true, tells Storm to log every message every emitted by a component. This is useful in local mode when testing topologies, but you probably want to keep this turned off when running topologies on the cluster.
+1. **TOPOLOGY_WORKERS**（通过`setNumWorkers`设置）指定集群中用来运行拓扑的_进程_的数目。拓扑中的每个节点都会作为_线程_来运行。给定节点的线程数通过`setBolt`和`setSpout`方法来设置。这些_线程_存在于工作_进程_之中。每个工作_进程_中都包含若干节点的一些_线程_。例如，用户为所有节点在配置文件中指定了300个线程和50个工作进程。每个工作进程将执行6个线程，每个线程可能属于不同的节点。用户可以通过调整节点的并行度和线程所属的工作进程的数目来优化Storm拓扑的性能。
+2. **TOPOLOGY_DEBUG**（通过`setDebug`设置）被设置为true时，Storm将会为每个节点所发射的每条消息生成日志。在本地模式中调试拓扑时打开这个选项会很有用，但在集群中应该将其关闭。
 
-There's many other configurations you can set for the topology. The various configurations are detailed on [the Javadoc for Config](/javadoc/apidocs/backtype/storm/Config.html).
+拓扑还有很多其他的配置可以设置。详细内容可以参考[Config](/javadoc/apidocs/backtype/storm/Config.html)的文档。
 
-To learn about how to set up your development environment so that you can run topologies in local mode (such as in Eclipse), see [Creating a new Storm project](Creating-a-new-Storm-project.html).
+关于如何建立开发环境并以本地模式运行拓扑（例如在Eclipse中），请参考[新建Storm工程](storm-creating-a-new-storm-project.html)。
 
-## Stream groupings
+## 流分组策略
 
-A stream grouping tells a topology how to send tuples between two components. Remember, spouts and bolts execute in parallel as many tasks across the cluster. If you look at how a topology is executing at the task level, it looks something like this:
+流分组策略告诉拓扑如何在节点之间发送元组。请记住，spout和bolt在集群中是以多个任务的形式并行运行的。从任务层面来观察，拓扑是这样运行的：
 
-![Tasks in a topology](/images/topology-tasks.png)
+![拓扑中的任务](/images/topology-tasks.png)
 
-When a task for Bolt A emits a tuple to Bolt B, which task should it send the tuple to?
+当bolt A的一个任务向bolt B发射元组时，元组会被发送到哪个任务呢？
 
-A "stream grouping" answers this question by telling Storm how to send tuples between sets of tasks. Before we dig into the different kinds of stream groupings, let's take a look at another topology from [storm-starter](http://github.com/apache/storm/blob/master/examples/storm-starter). This [WordCountTopology](https://github.com/apache/storm/blob/master/examples/storm-starter/src/jvm/storm/starter/WordCountTopology.java) reads sentences off of a spout and streams out of `WordCountBolt` the total number of times it has seen that word before:
+流分组策略通过告诉Storm如何在任务集合之间发送元组来解决这个问题。在深入探讨不同流分组策略之间的差异之前，我们来看一看[storm-starter](http://github.com/apache/storm/blob/master/examples/storm-starter)中的另一个拓扑。这个名为[WordCountTopology](https://github.com/apache/storm/blob/master/examples/storm-starter/src/jvm/storm/starter/WordCountTopology.java)的拓扑从spout读取一系列句子，然后通过`WordCountBolt`发送截止某一时刻它所观察到的某个单词的总数：
 
 ```java
 TopologyBuilder builder = new TopologyBuilder();
@@ -261,23 +261,23 @@ builder.setBolt("count", new WordCount(), 12)
         .fieldsGrouping("split", new Fields("word"));
 ```
 
-`SplitSentence` emits a tuple for each word in each sentence it receives, and `WordCount` keeps a map in memory from word to count. Each time `WordCount` receives a word, it updates its state and emits the new word count.
+`SplitSentence`为接收到的每个句子中的每个单词发射一个元组，`WordCount`则在内存中保存一个单词计数的map。每当`WordCount`接收到一个单词，它就会更新map并且发射新的单词数目。
 
-There's a few different kinds of stream groupings.
+有多种不同的分组策略。
 
-The simplest kind of grouping is called a "shuffle grouping" which sends the tuple to a random task. A shuffle grouping is used in the `WordCountTopology` to send tuples from `RandomSentenceSpout` to the `SplitSentence` bolt. It has the effect of evenly distributing the work of processing the tuples across all of `SplitSentence` bolt's tasks.
+最简单的分组策略是随机分组，即每个元组被发送给随机的任务。`WordCountTopology`使用随机分组将从`RandomSentenceSpout`接收到的元组发送给`SplitSentence`。它可以将处理元组的工作量平均分配到`SplitSentence`的所有任务上。
 
-A more interesting kind of grouping is the "fields grouping". A fields grouping is used between the `SplitSentence` bolt and the `WordCount` bolt. It is critical for the functioning of the `WordCount` bolt that the same word always go to the same task. Otherwise, more than one task will see the same word, and they'll each emit incorrect values for the count since each has incomplete information. A fields grouping lets you group a stream by a subset of its fields. This causes equal values for that subset of fields to go to the same task. Since `WordCount` subscribes to `SplitSentence`'s output stream using a fields grouping on the "word" field, the same word always goes to the same task and the bolt produces the correct output.
+A另一种更加有趣的分组策略是字段分组。`SplitSentence`和`WordCount`之间使用的就是字段分组。确保同一个单词总是被发送到同一个任务对于`WordCount`的正确运行很重要。否则，多个不同的任务将接收到同样的单词，由于信息不完整将会发射错误的计数值。字段分组允许用户通过字段对流进行分组，从而保证具有相同字段值的元组被发送到同一个任务。由于`WordCount`通过基于"word"字段的字段分组订阅了`SplitSentence`的输出流，同一个单词总是被发送到同一个任务，从而保证了结果的正确性。
 
-Fields groupings are the basis of implementing streaming joins and streaming aggregations as well as a plethora of other use cases. Underneath the hood, fields groupings are implemented using mod hashing.
+字段分组是流连接和聚合以及很多其他应用的基础。字段分组通过哈希值的模运算来实现。
 
-There's a few other kinds of stream groupings. You can read more about them on [Concepts](Concepts.html). 
+除此之外还有一些其他的分组策略，请参考[概念](storm-concepts.html)。
 
-## Defining Bolts in other languages
+## 使用其它语言定义bolt
 
-Bolts can be defined in any language. Bolts written in another language are executed as subprocesses, and Storm communicates with those subprocesses with JSON messages over stdin/stdout. The communication protocol just requires an ~100 line adapter library, and Storm ships with adapter libraries for Ruby, Python, and Fancy. 
+bolt可以通过任意语言定义。使用其他语言编写的bolt以子进程的形式运行，Storm通过stdin/stdout流中的JSON消息和这些子进程进行通信。通信协议需要借助一个约100行的适配库完成，Storm为Ruby、Python和Fancy提供了适配库。
 
-Here's the definition of the `SplitSentence` bolt from `WordCountTopology`:
+下面是`WordCountTopology`中`SplitSentence`的实现：
 
 ```java
 public static class SplitSentence extends ShellBolt implements IRichBolt {
@@ -291,7 +291,7 @@ public static class SplitSentence extends ShellBolt implements IRichBolt {
 }
 ```
 
-`SplitSentence` overrides `ShellBolt` and declares it as running using `python` with the arguments `splitsentence.py`. Here's the implementation of `splitsentence.py`:
+`SplitSentence`继承了`ShellBolt`并且声明它将使用参数`splitsentence.py`来运行`python`。下面是`splitsentence.py`的实现：
 
 ```python
 import storm
@@ -305,20 +305,20 @@ class SplitSentenceBolt(storm.BasicBolt):
 SplitSentenceBolt().run()
 ```
 
-For more information on writing spouts and bolts in other languages, and to learn about how to create topologies in other languages (and avoid the JVM completely), see [Using non-JVM languages with Storm](Using-non-JVM-languages-with-Storm.html).
+关于如何使用其他语言编写spout和bolt以及使用其它语言创建拓扑，请参考[在Storm中使用非JVM语言](storm-using-non-jvm-languages-with-storm.html)。
 
-## Guaranteeing message processing
+## 强制消息处理
 
-Earlier on in this tutorial, we skipped over a few aspects of how tuples are emitted. Those aspects were part of Storm's reliability API: how Storm guarantees that every message coming off a spout will be fully processed. See [Guaranteeing message processing](Guaranteeing-message-processing.html) for information on how this works and what you have to do as a user to take advantage of Storm's reliability capabilities.
+本文前面省略了元组发射过程中的一些细节。这些细节是Storm的可靠性API的一部分，即Storm如何确保spout发出的每条消息都被充分处理。具体细节以及作为用户如何有效利用Storm的可靠性API可以参考[这里](Guaranteeing-message-processing.html)。
 
-## Transactional topologies
+## 事务拓扑
 
-Storm guarantees that every message will be played through the topology at least once. A common question asked is "how do you do things like counting on top of Storm? Won't you overcount?" Storm has a feature called transactional topologies that let you achieve exactly-once messaging semantics for most computations. Read more about transactional topologies [here](Transactional-topologies.html). 
+Storm保证每条消息在拓扑中至少被处理一次。一个常见的问题是“如何在Storm中进行计数？如何避免重复计数？”Storm提供了一种叫做事务拓扑的特性用于保证每条消息被且仅被处理一次。关于事务拓扑可以参考[这里](storm-transactional-topologies.html)。
 
-## Distributed RPC
+## 分布式RPC
 
-This tutorial showed how to do basic stream processing on top of Storm. There's lots more things you can do with Storm's primitives. One of the most interesting applications of Storm is Distributed RPC, where you parallelize the computation of intense functions on the fly. Read more about Distributed RPC [here](Distributed-RPC.html). 
+本文只展示了如何在Storm之上进行基本的流处理。借助Storm原语，用户还可以做更多的事情。其中一个最有趣的应用就是分布式RPC，它可以将高计算量的方法调用动态地并行化。详细介绍请参考[分布式 RPC](storm-distributed-rpc.html)。
 
-## Conclusion
+## 结论
 
-This tutorial gave a broad overview of developing, testing, and deploying Storm topologies. The rest of the documentation dives deeper into all the aspects of using Storm.
+本文简要介绍了如何开发、测试和部署Storm拓扑。其余的文章将更深入地探讨Storm使用过程中的各方面问题。
