@@ -1,34 +1,34 @@
 ---
 layout: post
 category : Storm
-title: Storm容错性能
+title: Storm容错性
 tagline: ""
 tags : [storm]
 ---
 {% include JB/setup %}
 
-This page explains the design details of Storm that make it a fault-tolerant system.
+本文介绍Storm是如何被设计为一个容错的系统的。
 
-## What happens when a worker dies?
+## 工作进程异常终止时会发生什么？
 
-When a worker dies, the supervisor will restart it. If it continuously fails on startup and is unable to heartbeat to Nimbus, Nimbus will reassign the worker to another machine.
+工作进程异常终止时，supervisor会重启它。如果它反复启动失败从而无法向Nimbus发送心跳消息，则Nimbus会将工作进程分配到另一台机器。
 
-## What happens when a node dies?
+## 节点异常终止时会发生什么？
 
-The tasks assigned to that machine will time-out and Nimbus will reassign those tasks to other machines.
+分配到这台机器的所有任务都会超时，Nimbus会将这些任务分配到其他机器。
 
-## What happens when Nimbus or Supervisor daemons die?
+## Nimbus或Supervisor守护进程异常终止时会发生什么？
 
-The Nimbus and Supervisor daemons are designed to be fail-fast (process self-destructs whenever any unexpected situation is encountered) and stateless (all state is kept in Zookeeper or on disk). As described in [Setting up a Storm cluster](Setting-up-a-Storm-cluster.html), the Nimbus and Supervisor daemons must be run under supervision using a tool like daemontools or monit. So if the Nimbus or Supervisor daemons die, they restart like nothing happened.
+Nimbus和Supervisor守护进程被设计为速错的（遇到错误情况时进程自动退出）和无状态的（所有状态保存在Zookeeper或本地磁盘中）。如[建立Storm集群](Setting-up-a-Storm-cluster.html)一文所述，Nimbus和Supervisor守护进程需要在类似daemontools或monit的工具监控之下运行。这样一旦它们异常终止，可以立即重启，就像从未发生过异常一样。
 
-Most notably, no worker processes are affected by the death of Nimbus or the Supervisors. This is in contrast to Hadoop, where if the JobTracker dies, all the running jobs are lost. 
+值得注意的是，工作进程并不会收到Nimbus或Supervisor异常终止的影响。相反，如果Hadoop的JobTracker异常终止，所有运行中的任务都将丢失。
 
-## Is Nimbus a single point of failure?
+## Nimbus会单点失败吗？
 
-If you lose the Nimbus node, the workers will still continue to function. Additionally, supervisors will continue to restart workers if they die. However, without Nimbus, workers won't be reassigned to other machines when necessary (like if you lose a worker machine). 
+如果Nimbus节点丢失，工作进程仍将继续工作。而且，supervisor也可以在工作进程失败之后继续重启它们。但是，如果没有Nimbus，工作进程将无法在必要时（如工作机器挂掉）被重新分配到其他机器。
 
-So the answer is that Nimbus is "sort of" a SPOF. In practice, it's not a big deal since nothing catastrophic happens when the Nimbus daemon dies. There are plans to make Nimbus highly available in the future.
+所以Nimbus会引起“某种”单点失败。实际上，由于Nimbus守护进程异常终止并不会造成灾难性的后果，所以这并不是很严重的问题。未来Storm将实现Nimbus的高可用。
 
-## How does Storm guarantee data processing?
+## Storm如何确保消息被处理？
 
-Storm provides mechanisms to guarantee data processing even if nodes die or messages are lost. See [Guaranteeing message processing](Guaranteeing-message-processing.html) for the details.
+Storm提供了即使在节点机器挂掉或消息丢失的情形下也能保证消息被处理的机制。具体请参考[强制消息处理](storm-guaranteeing-message-processing.html)。
