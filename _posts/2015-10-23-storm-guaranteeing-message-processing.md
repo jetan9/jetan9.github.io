@@ -7,11 +7,11 @@ tags : [storm]
 ---
 {% include JB/setup %}
 
-Storm guarantees that each message coming off a spout will be fully processed. This page describes how Storm accomplishes this guarantee and what you have to do as a user to benefit from Storm's reliability capabilities.
+Storm确保每条从Spout发出的消息都会被充分处理。本文介绍其实现机制以及用户如何使用Storm的可信性特性。
 
-### What does it mean for a message to be "fully processed"?
+### 消息被“充分处理”的含义是什么？
 
-A tuple coming off a spout can trigger thousands of tuples to be created based on it. Consider, for example, the streaming word count topology:
+从Spout发出的一个元组可能触发成千上百个新元组。例如，考察下面这个单词计数拓扑：
 
 ```java
 TopologyBuilder builder = new TopologyBuilder();
@@ -25,15 +25,15 @@ builder.setBolt("count", new WordCount(), 20)
         .fieldsGrouping("split", new Fields("word"));
 ```
 
-This topology reads sentences off of a Kestrel queue, splits the sentences into its constituent words, and then emits for each word the number of times it has seen that word before. A tuple coming off the spout triggers many tuples being created based on it: a tuple for each word in the sentence and a tuple for the updated count for each word. The tree of messages looks something like this:
+这个拓扑从Kestrel队列读出一系列句子并将其分割为单词，然后将截止这一时刻所接收到的每个单词的个数发射出去。从Spout发出的元组触发了许多新的元组：句子中的每个单词生成一个元组，并且每次更新单词数目时也生成一个元组。消息树的结构如下所示：
 
-![Tuple tree](/images/tuple_tree.png)
+![元组树](/images/tuple_tree.png)
 
-Storm considers a tuple coming off a spout "fully processed" when the tuple tree has been exhausted and every message in the tree has been processed. A tuple is considered failed when its tree of messages fails to be fully processed within a specified timeout. This timeout can be configured on a topology-specific basis using the [Config.TOPOLOGY_MESSAGE_TIMEOUT_SECS](/javadoc/apidocs/backtype/storm/Config.html#TOPOLOGY_MESSAGE_TIMEOUT_SECS) configuration and defaults to 30 seconds.
+当元组树被遍历且树中的每条消息都被处理了之后，Storm即认为从Spout发出的元组被“充分处理”。如果在指定的超时时间内消息树没有被充分处理，则元组被认为处理失败。超时时间可以使用[Config.TOPOLOGY_MESSAGE_TIMEOUT_SECS](/javadoc/apidocs/backtype/storm/Config.html#TOPOLOGY_MESSAGE_TIMEOUT_SECS)在拓扑级别指定，其默认值为30秒。
 
-### What happens if a message is fully processed or fails to be fully processed?
+### 消息被充分处理或处理失败之后会发生什么？
 
-To understand this question, let's take a look at the lifecycle of a tuple coming off of a spout. For reference, here is the interface that spouts implement (see the [Javadoc](/javadoc/apidocs/backtype/storm/spout/ISpout.html) for more information):
+要理解这个问题，我们首先来看一下从Spout发出的元组的生命周期。作为参考，下面给出Spout实现的接口（参考[Javadoc](/javadoc/apidocs/backtype/storm/spout/ISpout.html)）：
 
 ```java
 public interface ISpout extends Serializable {
@@ -45,21 +45,21 @@ public interface ISpout extends Serializable {
 }
 ```
 
-First, Storm requests a tuple from the `Spout` by calling the `nextTuple` method on the `Spout`. The `Spout` uses the `SpoutOutputCollector` provided in the `open` method to emit a tuple to one of its output streams. When emitting a tuple, the `Spout` provides a "message id" that will be used to identify the tuple later. For example, the `KestrelSpout` reads a message off of the kestrel queue and emits as the "message id" the id provided by Kestrel for the message. Emitting a message to the `SpoutOutputCollector` looks like this:
+首先，Storm通过调用`Spout`的`nextTuple`方法从`Spout`获取元组。`Spout`使用`open`方法提供的`SpoutOutputCollector`对象来向它的一个输出流发射元组。发射元组时，`Spout`提供一个"消息id"用来标识元组。例如，`KestrelSpout`从Kestrel队列读取消息并将Kestrel提供的id作为"消息id"发射出去。向`SpoutOutputCollector`发射消息的代码如下：
 
 ```java
 _collector.emit(new Values("field1", "field2", 3) , msgId);
 ```
 
-Next, the tuple gets sent to consuming bolts and Storm takes care of tracking the tree of messages that is created. If Storm detects that a tuple is fully processed, Storm will call the `ack` method on the originating `Spout` task with the message id that the `Spout` provided to Storm. Likewise, if the tuple times-out Storm will call the `fail` method on the `Spout`. Note that a tuple will be acked or failed by the exact same `Spout` task that created it. So if a `Spout` is executing as many tasks across the cluster, a tuple won't be acked or failed by a different task than the one that created it.
+接下来，元组被发送到消费Bolt，而Storm则负责跟踪创建的消息树。如果Storm检测到一个元组被充分处理，它会使用`Spout`提供的消息id去调用最初的`Spout`任务的`ack`方法。同理，如果元组超时则Storm会调用`Spout`的`fail`方法。注意，元组将由创建它的`Spout`任务来确认成功或失败。所以，如果`Spout`作为集群中的多个任务来运行，元组不会由其他的任务确认成功或失败。
 
-Let's use `KestrelSpout` again to see what a `Spout` needs to do to guarantee message processing. When `KestrelSpout` takes a message off the Kestrel queue, it "opens" the message. This means the message is not actually taken off the queue yet, but instead placed in a "pending" state waiting for acknowledgement that the message is completed. While in the pending state, a message will not be sent to other consumers of the queue. Additionally, if a client disconnects all pending messages for that client are put back on the queue. When a message is opened, Kestrel provides the client with the data for the message as well as a unique id for the message. The `KestrelSpout` uses that exact id as the "message id" for the tuple when emitting the tuple to the `SpoutOutputCollector`. Sometime later on, when `ack` or `fail` are called on the `KestrelSpout`, the `KestrelSpout` sends an ack or fail message to Kestrel with the message id to take the message off the queue or have it put back on.
+下面仍然以`KestrelSpout`为例来说明`Spout`如何确保消息被处理。当`KestrelSpout`从Kestrel队列读出一条消息时，相当于它"打开"了这条消息。这时消息并没有真正从队列中移除，而是处于一个"等待"状态来等待系统确认消息被成功处理。在等待状态中，消息不会被发送给队列的其他消费者。而且，如果一个客户端断开了连接，则相关的所有处于等待状态的消息都将被放回队列。客户端打开消息时，Kestrel会随同消息数据一起提供一个唯一的消息id。`KestrelSpout`将此id作为向`SpoutOutputCollector`发射元组时使用的"消息id"。稍后，调用`KestrelSpout`的`ack`或`fail`方法时，`KestrelSpout`会向Kestrel发送带有消息id的确认成功或失败的消息来将消息从队列中移除或放回队列。
 
-### What is Storm's reliability API?
+### Storm的可信性API什么？
 
-There's two things you have to do as a user to benefit from Storm's reliability capabilities. First, you need to tell Storm whenever you're creating a new link in the tree of tuples. Second, you need to tell Storm when you have finished processing an individual tuple. By doing both these things, Storm can detect when the tree of tuples is fully processed and can ack or fail the spout tuple appropriately. Storm's API provides a concise way of doing both of these tasks. 
+要利用Storm的可信性特性，用户需要完成两件事情。首先，在消息树中创建新边时需要通知Storm。其次，处理完每一个元组时需要通知Storm。只要用户完成了这两个操作，Storm就可以检测到元组树何时被处理完毕，从而可以相应地确认Spout发射出的元组的处理结果。Storm为这两个任务提供了简洁的方案。
 
-Specifying a link in the tuple tree is called _anchoring_. Anchoring is done at the same time you emit a new tuple. Let's use the following bolt as an example. This bolt splits a tuple containing a sentence into a tuple for each word:
+指定元组树中的一条边被称为_定锚_。定锚在用户发射新的元组时完成。下面的Bolt是一个例子。它将一个包含一条句子的元组分割成只包含一个单词的多个元组：
 
 ```java
 public class SplitSentence extends BaseRichBolt {
@@ -83,15 +83,15 @@ public class SplitSentence extends BaseRichBolt {
     }
 ```
 
-Each word tuple is _anchored_ by specifying the input tuple as the first argument to `emit`. Since the word tuple is anchored, the spout tuple at the root of the tree will be replayed later on if the word tuple failed to be processed downstream. In contrast, let's look at what happens if the word tuple is emitted like this:
+通过将输入元组作为`emit`的第一个参数，每个单词元组被_锚定_。由于单词元组被锚定，如果此元组在下游未能被成功处理，则树根部的Spout元组将被重新发射。作为对比，下面来看看如果单词元组被这样发射会发生什么：
 
 ```java
 _collector.emit(new Values(word));
 ```
 
-Emitting the word tuple this way causes it to be _unanchored_. If the tuple fails be processed downstream, the root tuple will not be replayed. Depending on the fault-tolerance guarantees you need in your topology, sometimes it's appropriate to emit an unanchored tuple.
+这样发射的单词元组将是_未锚定_的。如果此元组在下游未能被成功处理，树根部的Spout元组不会被重新发射。根据用户拓扑对容错性程度的要求，有时发射未锚定的元组更加合理。
 
-An output tuple can be anchored to more than one input tuple. This is useful when doing streaming joins or aggregations. A multi-anchored tuple failing to be processed will cause multiple tuples to be replayed from the spouts. Multi-anchoring is done by specifying a list of tuples rather than just a single tuple. For example:
+输出元组可以被锚定到多个输入元组。在进行流的连接或聚合时这一点很有用。多锚定的元组在处理失败时将导致Spout发出的多个元组被重新发射。多定锚是通过指定一个元组链表来实现的。如下例所示：
 
 ```java
 List<Tuple> anchors = new ArrayList<Tuple>();
@@ -100,19 +100,19 @@ anchors.add(tuple2);
 _collector.emit(anchors, new Values(1, 2, 3));
 ```
 
-Multi-anchoring adds the output tuple into multiple tuple trees. Note that it's also possible for multi-anchoring to break the tree structure and create tuple DAGs, like so:
+多定锚将输出元组加入到多棵元组树中。注意，多定锚可能打破树结构的限制从而生成一个元组DAG，如下图所示：
 
-![Tuple DAG](/images/tuple-dag.png)
+![元组DAG](/images/tuple-dag.png)
 
-Storm's implementation works for DAGs as well as trees (pre-release it only worked for trees, and the name "tuple tree" stuck).
+Storm的实现对DAG和树同样有效（之前的版本只对树有效，而且“元组树”这个名称并不准确）。
 
-Anchoring is how you specify the tuple tree -- the next and final piece to Storm's reliability API is specifying when you've finished processing an individual tuple in the tuple tree. This is done by using the `ack` and `fail` methods on the `OutputCollector`. If you look back at the `SplitSentence` example, you can see that the input tuple is acked after all the word tuples are emitted.
+定锚是用户描述元组树的方法，也是Storm可信性API中用来描述用户何时处理完元组树中的一个元组的最后一部分内容。这是通过调用`OutputCollector`的`ack`和`fail`方法完成的。如之前的`SplitSentence`所示，输入元组在所有单词元组被发射之后才被确认成功。
 
-You can use the `fail` method on the `OutputCollector` to immediately fail the spout tuple at the root of the tuple tree. For example, your application may choose to catch an exception from a database client and explicitly fail the input tuple. By failing the tuple explicitly, the spout tuple can be replayed faster than if you waited for the tuple to time-out.
+用户可以调用`OutputCollector`的`fail`方法来立即使元组树根部的Spout元组失败。例如，应用程序可能需要处理数据库连接异常并显式使输入元组失败。显式确认失败可以使得Spout元组更快地被重新发送（无需等待超时）。
 
-Every tuple you process must be acked or failed. Storm uses memory to track each tuple, so if you don't ack/fail every tuple, the task will eventually run out of memory. 
+所有被处理的元组都必须被确认成功或失败。Storm使用内存来跟踪每个元组，所以如果用户不对每个元组进行确认，任务最终将耗尽内存。
 
-A lot of bolts follow a common pattern of reading an input tuple, emitting tuples based on it, and then acking the tuple at the end of the `execute` method. These bolts fall into the categories of filters and simple functions. Storm has an interface called `BasicBolt` that encapsulates this pattern for you. The `SplitSentence` example can be written as a `BasicBolt` like follows:
+很多Bolt遵从读入输入元组、发射新元组、在`execute`方法末尾确认元组的常见模式。这些Bolt可以化为过滤器和简单功能的类别。Storm提供了一个叫做`Basicbolt`的接口来封装这种模式。`SplitSentence`示例可使用`BasicBolt`重写：
 
 ```java
 public class SplitSentence extends BaseBasicBolt {
@@ -129,57 +129,56 @@ public class SplitSentence extends BaseBasicBolt {
     }
 ```
 
-This implementation is simpler than the implementation from before and is semantically identical. Tuples emitted to `BasicOutputCollector` are automatically anchored to the input tuple, and the input tuple is acked for you automatically when the execute method completes.
+这份实现比之前的更加简单而且语义上是等价的。发射给`BasicOutputCollector`的元组被自动锚定到输入元组，execute方法结束时输入元组被自动确认成功。
 
-In contrast, bolts that do aggregations or joins may delay acking a tuple until after it has computed a result based on a bunch of tuples. Aggregations and joins will commonly multi-anchor their output tuples as well. These things fall outside the simpler pattern of `IBasicBolt`.
+作为对比，进行聚合或连接的Bolt可能会等到一批元组被计算出结果之后才会确认输入元组。聚合和连接一般会将输出元组进行多锚定。这些操作就不是`IBasicBolt`的模式所能涵盖的了。
 
-### How do I make my applications work correctly given that tuples can be replayed?
+### 如果元组可被重新发送，如何保证应用程序正确运行？
 
-As always in software design, the answer is "it depends." Storm 0.7.0 introduced the "transactional topologies" feature, which enables you to get fully fault-tolerant exactly-once messaging semantics for most computations. Read more about transactional topologies [here](Transactional-topologies.html). 
+如软件设计中的通常情况一样，答案是“看情况”。Storm 0.7.0引入了"事务拓扑"的特性，它为用户提供了完全容错、保证消息被处理一次的语义，这可以应对大多数计算情形。关于事务拓扑请参考[这里](storm-transactional-topologies.html)。
 
+### Storm如何高效实现可信性？
 
-### How does Storm implement reliability in an efficient way?
+Storm集群使用一个特殊的"acker"任务集用来跟踪每个Spout元组的元组DAG。acker观察到DAG结束之后，会向创建Spout元组的Spout任务发送一条确认消息。用户可以通过[Config.TOPOLOGY_ACKER_EXECUTORS](/javadoc/apidocs/backtype/storm/Config.html#TOPOLOGY_ACKER_EXECUTORS)设置拓扑的acker执行线程的数目。TOPOLOGY_ACKER_EXECUTORS默认和拓扑的工作进程的数目相同，如果拓扑需要处理大量的消息，可能需要适当增大这个值。
 
-A Storm topology has a set of special "acker" tasks that track the DAG of tuples for every spout tuple. When an acker sees that a DAG is complete, it sends a message to the spout task that created the spout tuple to ack the message. You can set the number of acker executors for a topology in the topology configuration using [Config.TOPOLOGY_ACKER_EXECUTORS](/javadoc/apidocs/backtype/storm/Config.html#TOPOLOGY_ACKER_EXECUTORS). Storm defaults TOPOLOGY_ACKER_EXECUTORS to be equal to the number of workers configured in the topology -- you will need to increase this number for topologies processing large amounts of messages.
+要理解Storm的可信性特性实现原理的最好方法是考察元组的生命周期和元组DAG。当元组在拓扑中被创建时，不管是被Spout还是Bolt创建的，它都会被指定一个64位的id。这些id被acker用来跟踪每个Spout元组的元组DAG。
 
-The best way to understand Storm's reliability implementation is to look at the lifecycle of tuples and tuple DAGs. When a tuple is created in a topology, whether in a spout or a bolt, it is given a random 64 bit id. These ids are used by ackers to track the tuple DAG for every spout tuple.
+每个元组都知道它所在元组树的Spout元组的id。在Bolt中发射新元组时，新元组所锚定的Spout元组的id被一并拷入。确认元组时，它向相应的acker任务发送一条描述元组树变化情况的消息。更准确地说，内容是“我在这个Spout元组的树中已经处理完毕，这里是锚定到我的所有新元组”。
 
-Every tuple knows the ids of all the spout tuples for which it exists in their tuple trees. When you emit a new tuple in a bolt, the spout tuple ids from the tuple's anchors are copied into the new tuple. When a tuple is acked, it sends a message to the appropriate acker tasks with information about how the tuple tree changed. In particular it tells the acker "I am now completed within the tree for this spout tuple, and here are the new tuples in the tree that were anchored to me". 
+例如，如果元组"D"和"E"基于元组"C"创建，下面是"C"被确认之后元组树的变化情况：
 
-For example, if tuples "D" and "E" were created based on tuple "C", here's how the tuple tree changes when "C" is acked: 
+![确认时发生了什么](/images/ack_tree.png)
 
-![What happens on an ack](/images/ack_tree.png)
+由于"C"是在"D"和"E"被加入树的同时被从树中移除的，所以树永远不会提前完成。
 
-Since "C" is removed from the tree at the same time that "D" and "E" are added to it, the tree can never be prematurely completed.
+关于Storm如何跟踪元组树还有一些细节需要说明。如之前提到的，在拓扑中可以指定任意数目的acker任务。这就导致了一个问题：当元组在拓扑中被确认时，它如何知道向哪个acker任务发送消息呢？
 
-There are a few more details to how Storm tracks tuple trees. As mentioned already, you can have an arbitrary number of acker tasks in a topology. This leads to the following question: when a tuple is acked in the topology, how does it know to which acker task to send that information? 
+Storm使用模哈希将Spout元组id映射到acker任务。由于每个元组都携带着所在元组树的Spout元组的id，所以它们可以知道和哪个acker任务通信。
 
-Storm uses mod hashing to map a spout tuple id to an acker task. Since every tuple carries with it the spout tuple ids of all the trees they exist within, they know which acker tasks to communicate with. 
+另一个细节是acker任务是如何知道哪个Spout任务对其所跟踪的Spout元组负责。当Spout任务发射新元组时，它向相应的acker发送一条消息说明它的任务id对所发射的Spout元组负责。这样，当acker看到一棵树被完成时，它就可以知道该向哪个任务发送结束消息了。
 
-Another detail of Storm is how the acker tasks track which spout tasks are responsible for each spout tuple they're tracking. When a spout task emits a new tuple, it simply sends a message to the appropriate acker telling it that its task id is responsible for that spout tuple. Then when an acker sees a tree has been completed, it knows to which task id to send the completion message.
+Acker任务并不显式跟踪元组树。对于包含成千上万个甚至更多个节点的元组树来说，跟踪所有的树将需要大量内存。事实上，acker采用了一种不同的策略，只需要为每个Spout元组分配固定大小的空间（约20字节）。这种跟踪算法是Storm之所以成功的一个关键之处，也是它的一个重大突破。
 
-Acker tasks do not track the tree of tuples explicitly. For large tuple trees with tens of thousands of nodes (or more), tracking all the tuple trees could overwhelm the memory used by the ackers. Instead, the ackers take a different strategy that only requires a fixed amount of space per spout tuple (about 20 bytes). This tracking algorithm is the key to how Storm works and is one of its major breakthroughs.
+acker任务存储一个map，键为Spout元组id，值是一个二元组。二元组的第一个值是创建Spout元组的任务id，后面用来发送完成消息。二元组的第二个值是一个叫做“ack值”的64位整数。ack值可以表示任意大小的整棵元组树的状态，它实际上是树中所有被创建/确认的元组的id的异或值。
 
-An acker task stores a map from a spout tuple id to a pair of values. The first value is the task id that created the spout tuple which is used later on to send completion messages. The second value is a 64 bit number called the "ack val". The ack val is a representation of the state of the entire tuple tree, no matter how big or how small.  It is simply the xor of all tuple ids that have been created and/or acked in the tree.
+当acker任务观察到一个ack值变为0时，它可以认为对应的元组树已经完成。由于元组id是随机的64位证书，所以ack值意外变为0的概率非常小。简单计算可知，如果每秒确认10,000次，需要50,000,000年才会发生一次错误。即使发生了错误，也只会使得碰巧失败的元组对应的数据被丢失。
 
-When an acker task sees that an "ack val" has become 0, then it knows that the tuple tree is completed. Since tuple ids are random 64 bit numbers, the chances of an "ack val" accidentally becoming 0 is extremely small. If you work the math, at 10K acks per second, it will take 50,000,000 years until a mistake is made. And even then, it will only cause data loss if that tuple happens to fail in the topology.
+上面介绍了可信性算法，现在来看一下有哪些可能的失败情形以及Storm如何避免数据丢失：
 
-Now that you understand the reliability algorithm, let's go over all the failure cases and see how in each case Storm avoids data loss:
+- **任务异常终止，元组未被确认**：这种情况下，失败元组所在树根部的Spout元组会由于超时而被重新发送。
+- **Acker异常终止**：这种情况下，acker所跟踪的所有Spout元组都会由于超时而被重新发送。
+- **Spout任务异常终止**：这种情况下，Spout所连接的源负责重新发送消息。例如，Kestrel或者RabbitMQ队列会在客户端断开连接时将所有处于等待状态的消息放回队列。
 
-- **A tuple isn't acked because the task died**: In this case the spout tuple ids at the root of the trees for the failed tuple will time out and be replayed.
-- **Acker task dies**: In this case all the spout tuples the acker was tracking will time out and be replayed.
-- **Spout task dies**: In this case the source that the spout talks to is responsible for replaying the messages. For example, queues like Kestrel and RabbitMQ will place all pending messages back on the queue when a client disconnects.
+可见，Storm的可信性机制是完全分布式、可伸缩和容错的。
 
-As you have seen, Storm's reliability mechanisms are completely distributed, scalable, and fault-tolerant. 
+### 调节可信性
 
-### Tuning reliability
+Acker任务是轻量级的，所以拓扑中并不需要很多。可以通过Storm UI来跟踪它们的性能（节点名称为"__acker"）。如果吞吐量不理想，就需要添加更多的acker任务。
 
-Acker tasks are lightweight, so you don't need very many of them in a topology. You can track their performance through the Storm UI (component id "__acker"). If the throughput doesn't look right, you'll need to add more acker tasks. 
+如果可信性对用户并不重要——即用户并不在意在失败情形下丢失元组——那么用户可以通过停止跟踪Spout元组的元组树来提高性能。这可以降低一半的消息发送量，因为一般情况下元组树中的每个元组都有对应的确认消息。另外，在下游的元组中需要存储的id数目也减少了，这进一步降低了所需带宽。
 
-If reliability isn't important to you -- that is, you don't care about losing tuples in failure situations -- then you can improve performance by not tracking the tuple tree for spout tuples. Not tracking a tuple tree halves the number of messages transferred since normally there's an ack message for every tuple in the tuple tree. Additionally, it requires fewer ids to be kept in each downstream tuple, reducing bandwidth usage.
+有3种方法可以移除可信性。第一种是将Config.TOPOLOGY_ACKERS设置为0。这种情况下，Storm会在spout发射元组之后立即调用`ack`方法。元组树将不会被跟踪。
 
-There are three ways to remove reliability. The first is to set Config.TOPOLOGY_ACKERS to 0. In this case, Storm will call the `ack` method on the spout immediately after the spout emits a tuple. The tuple tree won't be tracked.
+第二种方法是在消息级别移除可信性。可以通过在`SpoutOutputCollector.emit`方法中省略消息id来停止跟踪特定Spout元组。
 
-The second way is to remove reliability on a message by message basis. You can turn off tracking for an individual spout tuple by omitting a message id in the `SpoutOutputCollector.emit` method.
-
-Finally, if you don't care if a particular subset of the tuples downstream in the topology fail to be processed, you can emit them as unanchored tuples. Since they're not anchored to any spout tuples, they won't cause any spout tuples to fail if they aren't acked.
+最后，如果用户只是不关心拓扑中特定的下游元组集合是否被成功处理，可以将它们发射为未锚定的元组。由于它们没有被锚定到任何Spout元组，即使它们没有被确认也不会引起Spout元组被重新发送。
