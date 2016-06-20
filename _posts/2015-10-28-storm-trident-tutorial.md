@@ -7,16 +7,16 @@ tags : [storm]
 ---
 {% include JB/setup %}
 
-Trident is a high-level abstraction for doing realtime computing on top of Storm. It allows you to seamlessly intermix high throughput (millions of messages per second), stateful stream processing with low latency distributed querying. If you're familiar with high level batch processing tools like Pig or Cascading, the concepts of Trident will be very familiar – Trident has joins, aggregations, grouping, functions, and filters. In addition to these, Trident adds primitives for doing stateful, incremental processing on top of any database or persistence store. Trident has consistent, exactly-once semantics, so it is easy to reason about Trident topologies.
+Trident是基于Storm的用于实时计算的高层抽象。它使得用户可以无缝集成高吞吐量（每秒数百万条消息）、有状态的流处理以及低延迟的分布式查询。如果用户对诸如Pig或Cascading的高层批处理工具熟悉的话，也会对Trident的概念相当熟悉——Trident提供了连接、聚合、分组、函数和过滤器。除此之外，Trident还增加了用于执行基于任意数据库或其他可持久化存储的有状态的增量处理的原语。Trident具有一致的、恰好一次的语义，所以很容易预测Trident拓扑的行为。
 
-## Illustrative example
+## 范例
 
-Let's look at an illustrative example of Trident. This example will do two things:
+接下来看一个Trident的例子。这个例子完成两件事情：
 
-1. Compute streaming word count from an input stream of sentences
-2. Implement queries to get the sum of the counts for a list of words
+1. 从输入的句子流计算流中单词的次数
+2. 实现给定单词列表次数之和的查询
 
-For the purposes of illustration, this example will read an infinite stream of sentences from the following source:
+作为示范，本例从如下源中读入无穷句子流：
 
 ```java
 FixedBatchSpout spout = new FixedBatchSpout(new Fields("sentence"), 3,
@@ -27,7 +27,7 @@ FixedBatchSpout spout = new FixedBatchSpout(new Fields("sentence"), 3,
 spout.setCycle(true);
 ```
 
-This spout cycles through that set of sentences over and over to produce the sentence stream. Here's the code to do the streaming word count part of the computation:
+这个Spout从句子集合中不断循环来产生句子流。下面是计算单词次数的代码：
 
 ```java
 TridentTopology topology = new TridentTopology();        
@@ -39,45 +39,45 @@ TridentState wordCounts =
        .parallelismHint(6);
 ```
 
-Let's go through the code line by line. First a TridentTopology object is created, which exposes the interface for constructing Trident computations. TridentTopology has a method called newStream that creates a new stream of data in the topology reading from an input source. In this case, the input source is just the FixedBatchSpout defined from before. Input sources can also be queue brokers like Kestrel or Kafka. Trident keeps track of a small amount of state for each input source (metadata about what it has consumed) in Zookeeper, and the "spout1" string here specifies the node in Zookeeper where Trident should keep that metadata.
+下面来逐行解释代码。首先创建一个TridentTopology对象，它暴露了构建Trident计算的接口。TridentTopology提供了一个名为newStream的方法用于在拓扑中创建从输入源读取的数据流。本例中，输入源即之前定义的FixedBatchSpout。输入源也可以试类似Kestrel或Kafka之类的队列中间件。Trident在Kafka中为每个输入源保存了少量状态记录（关于消费情况的元数据），而"spout1"字符串则指定了Trident应该在Zookeeper的哪个节点下保存元数据。
 
-Trident processes the stream as small batches of tuples. For example, the incoming stream of sentences might be divided into batches like so:
+Trident将流作为小的元组批来处理。例如，输入的句子流可能被划分为如下的批次：
 
-![Batched stream](/images/batched-stream.png)
+![分批后的流](/images/batched-stream.png)
 
-Generally the size of those small batches will be on the order of thousands or millions of tuples, depending on your incoming throughput.
+一般来说，这些批数据的容量约为几千到几百万个元组，具体取决于输入的流量。
 
-Trident provides a fully fledged batch processing API to process those small batches. The API is very similar to what you see in high level abstractions for Hadoop like Pig or Cascading: you can do group by's, joins, aggregations, run functions, run filters, and so on. Of course, processing each small batch in isolation isn't that interesting, so Trident provides functions for doing aggregations across batches and persistently storing those aggregations – whether in memory, in Memcached, in Cassandra, or some other store. Finally, Trident has first-class functions for querying sources of realtime state. That state could be updated by Trident (like in this example), or it could be an independent source of state.
+Trident提供了一套成熟的批处理API用于处理这些小规模的批数据。这些API和Hadoop的高层抽象如Pig或Cascading提供的很相似：用户可以执行分组、连接、聚合、运行函数、运行过滤器，等等。当然，单独处理每批数据并没有太大意义，所以Trident提供了用于跨批聚合数据并且存储聚合结果的功能，聚合结果可被存储于内存、Memcached、Cassandra或其他存储中间件。最后，Trident提供了用于查询实时状态源的一级函数。状态可以被Trident更新（如本例），也可以是一个独立的状态源。
 
-Back to the example, the spout emits a stream containing one field called "sentence". The next line of the topology definition applies the Split function to each tuple in the stream, taking the "sentence" field and splitting it into words. Each sentence tuple creates potentially many word tuples – for instance, the sentence "the cow jumped over the moon" creates six "word" tuples. Here's the definition of Split:
+回到这个例子，Spout发射了一个包含单个域"sentence"的流。拓扑代码的下一行为流中的每个元组应用了Split函数，它提取"sentence"域并将其分割成单词。每个句子元组生成了多个单词元组——例如，句子"the cow jumped over the moon"生成了6个单词元组。下面是Split的定义：
 
 ```java
 public class Split extends BaseFunction {
    public void execute(TridentTuple tuple, TridentCollector collector) {
        String sentence = tuple.getString(0);
        for(String word: sentence.split(" ")) {
-           collector.emit(new Values(word));                
+           collector.emit(new Values(word));
        }
    }
 }
 ```
 
-As you can see, it's really simple. It simply grabs the sentence, splits it on whitespace, and emits a tuple for each word.
+可见其实现非常简单，只是接收句子、按空格分割然后为每个单词发射一个元组。
 
-The rest of the topology computes word count and keeps the results persistently stored. First the stream is grouped by the "word" field. Then, each group is persistently aggregated using the Count aggregator. The persistentAggregate function knows how to store and update the results of the aggregation in a source of state. In this example, the word counts are kept in memory, but this can be trivially swapped to use Memcached, Cassandra, or any other persistent store. Swapping this topology to store counts in Memcached is as simple as replacing the persistentAggregate line with this (using [trident-memcached](https://github.com/nathanmarz/trident-memcached)), where the "serverLocations" is a list of host/ports for the Memcached cluster:
+拓扑代码的其他部分计算单词次数并持久化。首先，流按照"word"域进行分组。然后，每个组使用Count聚合器进行持久化聚合。persistentAggregate函数知道如何存储并更新状态源的聚合结果。本例中，单词计数结果位于内存中，但是这可以很轻松地迁移到Memcached、Cassandra或者其他持久化存储中。例如，要使用Memcached来存储计数结果只需使用如下代码（使用了[trident-memcached](https://github.com/nathanmarz/trident-memcached)），其中"serverLocations"是Memcached集群的主机/端口列表：
 
 ```java
 .persistentAggregate(MemcachedState.transactional(serverLocations), new Count(), new Fields("count"))        
 MemcachedState.transactional()
 ```
 
-The values stored by persistentAggregate represents the aggregation of all batches ever emitted by the stream.
+persistentAggregate所存储的值表示流所发射的所有批的聚合结果。
 
-One of the cool things about Trident is that it has fully fault-tolerant, exactly-once processing semantics. This makes it easy to reason about your realtime processing. Trident persists state in a way so that if failures occur and retries are necessary, it won't perform multiple updates to the database for the same source data.
+Trident最酷的一点是它具有完全容错、恰好处理一次的语义。这对推导实时处理的结果很有用。Trident保存状态的方式保证了即使发生了错误需要重试，也不会为同一个源数据进行多次更新操作。
 
-The persistentAggregate method transforms a Stream into a TridentState object. In this case the TridentState object represents all the word counts. We will use this TridentState object to implement the distributed query portion of the computation.
+persistentAggregate方法将Stream转化为TridentState对象。本例中TridentState对象代表了所有单词出现的次数。下面将使用这个TridentState对象来实现分布式查询的功能。
 
-The next part of the topology implements a low latency distributed query on the word counts. The query takes as input a whitespace separated list of words and return the sum of the counts for those words. These queries are executed just like normal RPC calls, except they are parallelized in the background. Here's an example of how you might invoke one of these queries:
+拓扑的下一部分实现了一个低延迟的分布式查询单词出现次数的模块。该模块接受空格分隔的单词列表，返回其中所有单词出现次数之和。这些查询的执行方式和普通的RPC调用类似，只是它们在后台是并行的。下面是一个调用示例：
 
 ```java
 DRPCClient client = new DRPCClient("drpc.server.location", 3772);
@@ -85,9 +85,9 @@ System.out.println(client.execute("words", "cat dog the man");
 // prints the JSON-encoded result, e.g.: "[[5078]]"
 ```
 
-As you can see, it looks just like a regular remote procedure call (RPC), except it's executing in parallel across a Storm cluster. The latency for small queries like this are typically around 10ms. More intense DRPC queries can take longer of course, although the latency largely depends on how many resources you have allocated for the computation.
+如上所示，除了在Storm集群中被并行执行外，此查询和普通的RPC调用并无区别。上例中所示的小规模查询的延迟一般在10ms左右。更密集的DRPC查询可能需要更长时间，不过这也取决于用户为计算程序分配了多少资源。
 
-The implementation of the distributed query portion of the topology looks like this:
+分布式查询具体实现如下：
 
 ```java
 topology.newDRPCStream("words")
@@ -225,33 +225,33 @@ stream.groupBy(new Fields("val1"))
 
 In this example, the output will contain the fields "val1" and "sum".
 
-## State
+## 状态
 
-A key problem to solve with realtime computation is how to manage state so that updates are idempotent in the face of failures and retries. It's impossible to eliminate failures, so when a node dies or something else goes wrong, batches need to be retried. The question is – how do you do state updates (whether external databases or state internal to the topology) so that it's like each message was only processed only once?
+实时计算的一个关键问题是如何处理状态以确保在发生错误需要重试时更新操作是幂等的。错误是不可能被避免的，所以当节点失败或发生其他错误时，批数据需要被重新处理。问题是，如何进行状态更新（不管是在外部数据库还是拓扑内部）才能使得看起来每条消息恰好只被处理了一次？
 
-This is a tricky problem, and can be illustrated with the following example. Suppose that you're doing a count aggregation of your stream and want to store the running count in a database. If you store only the count in the database and it's time to apply a state update for a batch, there's no way to know if you applied that state update before. The batch could have been attempted before, succeeded in updating the database, and then failed at a later step. Or the batch could have been attempted before and failed to update the database. You just don't know.
+这个复杂的问题可用如下例子来说明。假设用户正在进行计数聚合并且希望将计数值存储在数据库中。如果数据库中只存储了计数值，那么当需要更新计数值时，将无法得知此前是否已经进行了更新。批数据可能之前已经进行了处理并成功更新了数据库中的值，只是在稍后的其他步骤中失败了。当然也可能根本没有成功更新数据库中的值。用户此时无法确定具体是哪一种情况。
 
-Trident solves this problem by doing two things:
+Trident通过下面两步解决了这个问题：
 
-1. Each batch is given a unique id called the "transaction id". If a batch is retried it will have the exact same transaction id.
-2. State updates are ordered among batches. That is, the state updates for batch 3 won't be applied until the state updates for batch 2 have succeeded.
+1. 每一批数据都被指定了一个叫做"事务id"的唯一id。如果批数据被重试，事务id不变。
+2. 批数据的状态更新是有序的。即，第2批被更新完毕才会进行第3批的更新。
 
-With these two primitives, you can achieve exactly-once semantics with your state updates. Rather than store just the count in the database, what you can do instead is store the transaction id with the count in the database as an atomic value. Then, when updating the count, you can just compare the transaction id in the database with the transaction id for the current batch. If they're the same, you skip the update – because of the strong ordering, you know for sure that the value in the database incorporates the current batch. If they're different, you increment the count.
+使用这两个原语，用户即可在自定义的状态处理中实现恰好一次的语义。与之前只在数据库中存储计数值不同，用户可以将事务id和计数值一并作为一个原子值存入数据库。这样，在更新计数值时，只需要将当前批的事务id和数据库中的事务id进行比较即可。如果是相同的，则跳过更新操作——因为根据有序原语，可以确定数据库中的计数值对应于当前的批数据。如果不同，则可以增加计数值。
 
-Of course, you don't have to do this logic manually in your topologies. This logic is wrapped by the State abstraction and done automatically. Nor is your State object required to implement the transaction id trick: if you don't want to pay the cost of storing the transaction id in the database, you don't have to. In that case the State will have at-least-once-processing semantics in the case of failures (which may be fine for your application). You can read more about how to implement a State and the various fault-tolerance tradeoffs possible [in this doc](/documentation/Trident-state).
+当然，用户并不需要在拓扑中手动实现此逻辑。这部分内容被包含在State的抽象类中以自动完成。用户自定义的State对象也不需要实现事务id。如果用户不希望在数据库中存储id，也可以不存储。这时State具有在发生错误时保证至少处理一次的语义（对用户应用来说应该没有什么问题）。关于如何实现State对象以及权衡各种容错措施，请参阅[文档](/documentation/Trident-state)。
 
 A State is allowed to use whatever strategy it wants to store state. So it could store state in an external database or it could keep the state in-memory but backed by HDFS (like how HBase works). State's are not required to hold onto state forever. For example, you could have an in-memory State implementation that only keeps the last X hours of data available and drops anything older. Take a look at the implementation of the [Memcached integration](https://github.com/nathanmarz/trident-memcached/blob/master/src/jvm/trident/memcached/MemcachedState.java) for an example State implementation.
 
-## Execution of Trident topologies
+## Trident拓扑的执行
 
-Trident topologies compile down into as efficient of a Storm topology as possible. Tuples are only sent over the network when a repartitioning of the data is required, such as if you do a groupBy or a shuffle. So if you had this Trident topology:
+Trident拓扑会尽可能高效地编译为Storm拓扑。只有在需要对数据重新分区的时候（如执行groupBy或shuffle操作），元组才会被在整个网络上发送。如果Trident拓扑如下：
 
-![Compiling Trident to Storm 1](/images/trident-to-storm1.png)
+![Trident编译为Storm 1](/images/trident-to-storm1.png)
 
-It would compile into Storm spouts/bolts like this:
+它将被编译为如下所示的Storm spout/bolt：
 
-![Compiling Trident to Storm 2](/images/trident-to-storm2.png)
+![Trident编译为Storm 2](/images/trident-to-storm2.png)
 
-## Conclusion
+## 总结
 
-Trident makes realtime computation elegant. You've seen how high throughput stream processing, state manipulation, and low-latency querying can be seamlessly intermixed via Trident's API. Trident lets you express your realtime computations in a natural way while still getting maximal performance.
+Trident使得实时计算更加优雅。本文已经展示了如何利用Trident API来无缝组合高吞吐量的流处理、状态控制和低延迟的查询。Trident可以使用户更加自然地表达实时计算的逻辑，同时获得最佳的性能。
